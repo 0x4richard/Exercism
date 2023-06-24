@@ -8,7 +8,7 @@ pub fn anagrams_for<'a>(word: &str, possible_anagrams: &'a [&'a str]) -> HashSet
     for w in possible_anagrams {
         let sw = sort_word(w);
         if sorted_workd == sw && to_lowercase(word) != to_lowercase(w) {
-            set.insert(w.as_ref());
+            set.insert(*w);
         }
     }
 
