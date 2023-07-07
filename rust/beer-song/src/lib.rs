@@ -19,19 +19,9 @@ pub fn verse(n: u32) -> String {
 }
 
 pub fn sing(start: u32, end: u32) -> String {
-    let mut n = start;
-    let mut result = String::new();
-
-    loop {
-        let s = verse(n);
-        result.push_str(s.as_ref());
-        if end != n {
-            result.push_str("\n");
-            n -= 1;
-        } else {
-            break;
-        }
-    }
-
-    result
+    (end..start + 1)
+        .rev()
+        .map(|n| verse(n))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
