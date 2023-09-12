@@ -62,18 +62,18 @@ pub enum RemoveCallbackError {
 
 struct InputCell<T>(T);
 
-type ComputeFn<T> = Box<dyn Fn(&[T]) -> T>;
-struct ComputeCell<T> {
+type ComputeFn<'a, T> = Box<dyn 'a + Fn(&[T]) -> T>;
+struct ComputeCell<'a, T> {
     dependencies: Vec<CellId>,
-    func: ComputeFn<T>,
+    func: ComputeFn<'a, T>,
 }
 
-enum Cell<T> {
+enum Cell<'a, T> {
     Input(InputCell<T>),
-    Compute(ComputeCell<T>),
+    Compute(ComputeCell<'a, T>),
 }
 
-impl<T> Cell<T>
+impl<'a, T> Cell<'a, T>
 where
     T: Copy + PartialEq,
 {
@@ -102,19 +102,19 @@ where
     }
 }
 
-struct CallbackEntry<T> {
+struct CallbackEntry<'a, T> {
     id: usize,
-    callbacks: HashMap<CallbackId, Box<dyn FnMut(T)>>,
+    callbacks: HashMap<CallbackId, Box<dyn 'a + FnMut(T)>>,
 }
 
-pub struct Reactor<T> {
+pub struct Reactor<'a, T> {
     id: usize,
-    cells: HashMap<usize, Cell<T>>,
-    callbacks: HashMap<ComputeCellId, CallbackEntry<T>>,
+    cells: HashMap<usize, Cell<'a, T>>,
+    callbacks: HashMap<ComputeCellId, CallbackEntry<'a, T>>,
 }
 
 // You are guaranteed that Reactor will only be tested against types that are Copy + PartialEq.
-impl<T: Copy + PartialEq> Reactor<T> {
+impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     pub fn new() -> Self {
         let id = 0;
         let cells = HashMap::new();
@@ -149,7 +149,7 @@ impl<T: Copy + PartialEq> Reactor<T> {
     // Notice that there is no way to *remove* a cell.
     // This means that you may assume, without checking, that if the dependencies exist at creation
     // time they will continue to exist as long as the Reactor exists.
-    pub fn create_compute<F: Fn(&[T]) -> T + 'static>(
+    pub fn create_compute<F: Fn(&[T]) -> T + 'a>(
         &mut self,
         dependencies: &[CellId],
         compute_func: F,
@@ -229,7 +229,7 @@ impl<T: Copy + PartialEq> Reactor<T> {
     // * Exactly once if the compute cell's value changed as a result of the set_value call.
     //   The value passed to the callback should be the final value of the compute cell after the
     //   set_value call.
-    pub fn add_callback<F: FnMut(T) + 'static>(
+    pub fn add_callback<F: FnMut(T) + 'a>(
         &mut self,
         id: ComputeCellId,
         callback: F,
