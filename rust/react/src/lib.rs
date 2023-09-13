@@ -192,22 +192,8 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     // We chose not to cover this here, since this exercise is probably enough work as-is.
     pub fn value(&self, id: CellId) -> Option<T> {
         match id {
-            CellId::Input(cell_id) => {
-                let input_cell = match self.input_cells.get(&cell_id) {
-                    Some(input_cell) => input_cell,
-                    None => return None,
-                };
-                let value = input_cell.get_value(self);
-                Some(value)
-            }
-            CellId::Compute(cell_id) => {
-                let compute_cell = match self.compute_cells.get(&cell_id) {
-                    Some(compute_cell) => compute_cell,
-                    None => return None,
-                };
-                let value = compute_cell.get_value(self);
-                Some(value)
-            }
+            CellId::Input(cell_id) => self.input_cells.get(&cell_id).map(|i| i.get_value(self)),
+            CellId::Compute(cell_id) => self.compute_cells.get(&cell_id).map(|c| c.get_value(self)),
         }
     }
 
@@ -223,6 +209,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
         if let Some(e) = self.input_cells.get_mut(&id) {
             let new_cell = Cell::Input(InputCell(new_value));
             *e = new_cell;
+            self.run_callbacks();
             true
         } else {
             false
@@ -303,6 +290,18 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     }
 
     fn check_if_compute_cell_exist(&self, cell: ComputeCellId) -> bool {
-        self.compute_cells.get(&cell).is_some()
+        self.compute_cells.contains_key(&cell)
+    }
+
+    fn run_callbacks(&mut self) {
+        for (cell_id, cell) in &self.compute_cells {
+            let value = cell.get_value(self);
+            let compute_cell_id = ComputeCellId(*cell_id);
+            if let Some(callback_entry) = self.callbacks.get_mut(&compute_cell_id) {
+                for func in callback_entry.callbacks.values_mut() {
+                    func(value);
+                }
+            }
+        }
     }
 }

@@ -153,7 +153,6 @@ impl CallbackRecorder {
 }
 
 #[test]
-#[ignore]
 fn compute_cells_fire_callbacks() {
     let cb = CallbackRecorder::new();
     let mut reactor = Reactor::new();
@@ -183,7 +182,6 @@ fn error_adding_callback_to_nonexistent_cell() {
 }
 
 #[test]
-#[ignore]
 fn error_removing_callback_from_nonexisting_cell() {
     let mut dummy_reactor = Reactor::new();
     let dummy_input = dummy_reactor.create_input(1);
@@ -207,7 +205,6 @@ fn error_removing_callback_from_nonexisting_cell() {
 }
 
 #[test]
-#[ignore]
 fn callbacks_only_fire_on_change() {
     let cb = CallbackRecorder::new();
     let mut reactor = Reactor::new();
@@ -229,7 +226,6 @@ fn callbacks_only_fire_on_change() {
 }
 
 #[test]
-#[ignore]
 fn callbacks_can_be_called_multiple_times() {
     let cb = CallbackRecorder::new();
     let mut reactor = Reactor::new();
