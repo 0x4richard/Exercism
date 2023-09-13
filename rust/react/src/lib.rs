@@ -39,7 +39,7 @@ impl Deref for ComputeCellId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CallbackId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CellId {
     Input(InputCellId),
     Compute(ComputeCellId),
@@ -66,6 +66,7 @@ type ComputeFn<'a, T> = Box<dyn 'a + Fn(&[T]) -> T>;
 struct ComputeCell<'a, T> {
     dependencies: Vec<CellId>,
     func: ComputeFn<'a, T>,
+    value: T,
 }
 
 enum Cell<'a, T> {
@@ -112,9 +113,10 @@ struct CallbackEntry<'a, T> {
 
 pub struct Reactor<'a, T> {
     id: usize,
-    callbacks: HashMap<ComputeCellId, CallbackEntry<'a, T>>,
     input_cells: HashMap<usize, Cell<'a, T>>,
     compute_cells: HashMap<usize, Cell<'a, T>>,
+    callbacks: HashMap<ComputeCellId, CallbackEntry<'a, T>>,
+    dependencies: HashMap<CellId, Vec<CellId>>,
 }
 
 impl<'a, T: Copy + PartialEq> Default for Reactor<'a, T> {
@@ -123,11 +125,13 @@ impl<'a, T: Copy + PartialEq> Default for Reactor<'a, T> {
         let input_cells = HashMap::new();
         let compute_cells = HashMap::new();
         let callbacks = HashMap::new();
+        let dependencies = HashMap::new();
         Self {
             id,
             input_cells,
             compute_cells,
             callbacks,
+            dependencies,
         }
     }
 }
@@ -172,14 +176,23 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
             }
         }
 
+        let values = self.get_compute_values(dependencies.to_vec());
+
         self.id += 1;
         let compute_cell = ComputeCell {
-            dependencies: dependencies.to_vec(),
+            value: compute_func(&values),
             func: Box::new(compute_func),
+            dependencies: dependencies.to_vec(),
         };
         let cell = Cell::Compute(compute_cell);
         self.compute_cells.insert(self.id, cell);
         let compute_cell_id = ComputeCellId(self.id);
+        for cell_id in dependencies {
+            self.dependencies
+                .entry(*cell_id)
+                .and_modify(|c| c.push(CellId::Compute(compute_cell_id)))
+                .or_insert(vec![CellId::Compute(compute_cell_id)]);
+        }
         Ok(compute_cell_id)
     }
 
@@ -209,7 +222,9 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
         if let Some(e) = self.input_cells.get_mut(&id) {
             let new_cell = Cell::Input(InputCell(new_value));
             *e = new_cell;
-            self.run_callbacks();
+            let mut changed = HashMap::new();
+            self.update_dependencies(CellId::Input(id), &mut changed);
+            self.run_callbacks(&changed);
             true
         } else {
             false
@@ -293,13 +308,49 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
         self.compute_cells.contains_key(&cell)
     }
 
-    fn run_callbacks(&mut self) {
-        for (cell_id, cell) in &self.compute_cells {
-            let value = cell.get_value(self);
-            let compute_cell_id = ComputeCellId(*cell_id);
-            if let Some(callback_entry) = self.callbacks.get_mut(&compute_cell_id) {
-                for func in callback_entry.callbacks.values_mut() {
-                    func(value);
+    fn get_compute_values(&self, dependencies: Vec<CellId>) -> Vec<T> {
+        dependencies
+            .iter()
+            .filter_map(|id| self.value(*id))
+            .collect::<Vec<_>>()
+    }
+
+    fn update_dependencies(
+        &mut self,
+        input_cell_id: CellId,
+        changed: &mut HashMap<ComputeCellId, T>,
+    ) {
+        if let Some(compute_cell_ids) = self.dependencies.get(&input_cell_id) {
+            for compute_cell_id in compute_cell_ids {
+                let id = compute_cell_id.get_id();
+                if let Some(Cell::Compute(cell)) = self.compute_cells.get(&id) {
+                    let values = self.get_compute_values(cell.dependencies.clone());
+                    let new_value = (cell.func)(&values);
+                    if new_value == cell.value {
+                        continue;
+                    }
+                    self.compute_cells.entry(id).and_modify(|c| {
+                        if let Cell::Compute(compute_cell) = c {
+                            changed.insert(ComputeCellId(id), compute_cell.value);
+                            compute_cell.value = new_value;
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    fn run_callbacks(&mut self, changed: &HashMap<ComputeCellId, T>) {
+        for (computed_cell_id, prev_value) in changed {
+            if let Some(value) = self.value(CellId::Compute(*computed_cell_id)) {
+                if value == *prev_value {
+                    continue;
+                }
+
+                if let Some(callback_entry) = self.callbacks.get_mut(computed_cell_id) {
+                    for func in callback_entry.callbacks.values_mut() {
+                        func(value);
+                    }
                 }
             }
         }
