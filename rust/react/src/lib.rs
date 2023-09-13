@@ -176,7 +176,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
             }
         }
 
-        let values = self.get_compute_values(dependencies.to_vec());
+        let values = self.get_cells_values(dependencies.to_vec());
 
         self.id += 1;
         let compute_cell = ComputeCell {
@@ -223,7 +223,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
             let new_cell = Cell::Input(InputCell(new_value));
             *e = new_cell;
             let mut changed = HashMap::new();
-            self.update_dependencies(CellId::Input(id), &mut changed);
+            self.update_dependencies(&CellId::Input(id), &mut changed);
             self.run_callbacks(&changed);
             true
         } else {
@@ -308,23 +308,19 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
         self.compute_cells.contains_key(&cell)
     }
 
-    fn get_compute_values(&self, dependencies: Vec<CellId>) -> Vec<T> {
+    fn get_cells_values(&self, dependencies: Vec<CellId>) -> Vec<T> {
         dependencies
             .iter()
             .filter_map(|id| self.value(*id))
             .collect::<Vec<_>>()
     }
 
-    fn update_dependencies(
-        &mut self,
-        input_cell_id: CellId,
-        changed: &mut HashMap<ComputeCellId, T>,
-    ) {
-        if let Some(compute_cell_ids) = self.dependencies.get(&input_cell_id) {
-            for compute_cell_id in compute_cell_ids {
+    fn update_dependencies(&mut self, cell_id: &CellId, changed: &mut HashMap<ComputeCellId, T>) {
+        if let Some(compute_cell_ids) = self.dependencies.get(cell_id) {
+            for compute_cell_id in compute_cell_ids.clone() {
                 let id = compute_cell_id.get_id();
                 if let Some(Cell::Compute(cell)) = self.compute_cells.get(&id) {
-                    let values = self.get_compute_values(cell.dependencies.clone());
+                    let values = self.get_cells_values(cell.dependencies.clone());
                     let new_value = (cell.func)(&values);
                     if new_value == cell.value {
                         continue;
@@ -335,6 +331,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
                             compute_cell.value = new_value;
                         }
                     });
+                    self.update_dependencies(&compute_cell_id, changed);
                 }
             }
         }
