@@ -87,8 +87,11 @@ where
                         .dependencies
                         .iter()
                         .fold(init_vec, |new_vec, cell_id| {
-                            let input = reactor
-                                .cells
+                            let cells = match cell_id {
+                                CellId::Input(_) => &reactor.input_cells,
+                                CellId::Compute(_) => &reactor.compute_cells,
+                            };
+                            let input = cells
                                 .get(&cell_id.get_id())
                                 .map(|v| v.get_value(reactor))
                                 .into_iter()
@@ -109,21 +112,30 @@ struct CallbackEntry<'a, T> {
 
 pub struct Reactor<'a, T> {
     id: usize,
-    cells: HashMap<usize, Cell<'a, T>>,
     callbacks: HashMap<ComputeCellId, CallbackEntry<'a, T>>,
+    input_cells: HashMap<usize, Cell<'a, T>>,
+    compute_cells: HashMap<usize, Cell<'a, T>>,
+}
+
+impl<'a, T: Copy + PartialEq> Default for Reactor<'a, T> {
+    fn default() -> Self {
+        let id = 0;
+        let input_cells = HashMap::new();
+        let compute_cells = HashMap::new();
+        let callbacks = HashMap::new();
+        Self {
+            id,
+            input_cells,
+            compute_cells,
+            callbacks,
+        }
+    }
 }
 
 // You are guaranteed that Reactor will only be tested against types that are Copy + PartialEq.
 impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     pub fn new() -> Self {
-        let id = 0;
-        let cells = HashMap::new();
-        let callbacks = HashMap::new();
-        Self {
-            id,
-            cells,
-            callbacks,
-        }
+        Reactor::default()
     }
 
     // Creates an input cell with the specified initial value, returning its ID.
@@ -131,7 +143,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
         self.id += 1;
         let input_cell_id = InputCellId(self.id);
         let cell = Cell::Input(InputCell(initial));
-        self.cells.insert(self.id, cell);
+        self.input_cells.insert(self.id, cell);
 
         input_cell_id
     }
@@ -166,7 +178,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
             func: Box::new(compute_func),
         };
         let cell = Cell::Compute(compute_cell);
-        self.cells.insert(self.id, cell);
+        self.compute_cells.insert(self.id, cell);
         let compute_cell_id = ComputeCellId(self.id);
         Ok(compute_cell_id)
     }
@@ -181,7 +193,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     pub fn value(&self, id: CellId) -> Option<T> {
         match id {
             CellId::Input(cell_id) => {
-                let input_cell = match self.cells.get(&cell_id) {
+                let input_cell = match self.input_cells.get(&cell_id) {
                     Some(input_cell) => input_cell,
                     None => return None,
                 };
@@ -189,7 +201,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
                 Some(value)
             }
             CellId::Compute(cell_id) => {
-                let compute_cell = match self.cells.get(&cell_id) {
+                let compute_cell = match self.compute_cells.get(&cell_id) {
                     Some(compute_cell) => compute_cell,
                     None => return None,
                 };
@@ -208,7 +220,7 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     //
     // As before, that turned out to add too much extra complexity.
     pub fn set_value(&mut self, id: InputCellId, new_value: T) -> bool {
-        if let Some(e) = self.cells.get_mut(&id) {
+        if let Some(e) = self.input_cells.get_mut(&id) {
             let new_cell = Cell::Input(InputCell(new_value));
             *e = new_cell;
             true
@@ -291,6 +303,6 @@ impl<'a, T: Copy + PartialEq> Reactor<'a, T> {
     }
 
     fn check_if_compute_cell_exist(&self, cell: ComputeCellId) -> bool {
-        self.cells.get(&cell).is_some()
+        self.compute_cells.get(&cell).is_some()
     }
 }
